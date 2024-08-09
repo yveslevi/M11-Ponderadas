@@ -1,0 +1,218 @@
+---
+title: "Ponderada Semana 1"
+author: "Yves Lapa"
+date: "`r Sys.Date()`"
+output: 
+  html_document: default
+---
+# Análise exploratória dos dados
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 1. Carreagamento e Preparação dos dados
+
+### 1.1 Carregamento dos dados
+
+```{r}
+library(readxl)
+library(dplyr)
+library(openxlsx)
+library(ggplot2)
+skuCost<- read.csv("../db/sku_cost.csv")
+skuPrice<- read.csv("../db/sku_price.csv")
+skuStatus<- read.csv("../db/sku_status_dataset.csv", sep=";")
+sku_dataset <- read.csv("../db/sku_dataset.csv", sep=";")
+```
+
+### 1.2. Visualização do dataframe
+
+```{r}
+head(skuPrice)
+head(skuStatus)
+head(skuCost)
+head(sku_dataset)
+``` 
+
+
+```{r}
+# Agrupamento e soma do custo dos produtos
+skuCostGrouped <- skuCost %>%
+  group_by(cod_prod) %>%
+  summarise(total_custo = sum(custo))
+
+# Agrupamento e soma do preço dos produtos
+skuPriceGrouped <- skuPrice %>%
+  group_by(cod_prod) %>%
+  summarise(total_preco = sum(preco))
+
+# Transformação dos dados para caracterização se o produto está ativo (1) ou inativo (0)
+skuStatus <- skuStatus %>%
+  mutate(status = if_else(nchar(data_fim) == 0, 1, 0))
+
+# Join dos datasets com base na coluna de cod_prod
+sku_dataset <- sku_dataset %>%
+  left_join(skuStatus, by = "cod_prod") %>%
+  left_join(skuPriceGrouped, by = "cod_prod") %>%
+  left_join(skuCostGrouped, by = "cod_prod")
+
+# Convertendo todos os valores para ml
+sku_dataset <- sku_dataset %>%
+  mutate(conteudo_valor = case_when(
+    conteudo_medida == "oz" ~ conteudo_valor / 0.033814,
+    conteudo_medida == "lbs" ~ conteudo_valor * 453.59237,
+    TRUE ~ conteudo_valor
+  )) %>%
+  mutate(conteudo_medida = "ml")
+
+# Adicionar coluna de lucro unitário
+sku_dataset <- sku_dataset %>%
+  mutate(lucro = total_preco - total_custo)
+
+head(sku_dataset)
+
+# write.xlsx(sku_dataset, file = "sku_dataset.xlsx")
+```
+
+### 1.3. Verificação da estrutura dos dados
+
+```{r}
+str(sku_dataset)
+```
+
+## 2. Verificação da estrutura dos dados
+
+### 2.1. Resumo estatístico
+```{r}
+summary(sku_dataset)
+```
+
+### 2.2. Descrição das variáveis
+```{r}
+
+# cod_prod: Código único do produto.
+# nome_abrev: Nome abreviado do produto.
+# nome_completo: Nome completo do produto.
+# descricao: Descrição detalhada do produto.
+# categoria: Categoria a que pertence.
+# marca: Marca do produto.
+# conteudo_valor: Quantidade do conteúdo.
+# conteudo_medida: Unidade de medida do conteúdo.
+# data_inicio: Data de início da oferta.
+# data_fim: Data de término da oferta.
+# status: Status atual do produto.
+# total_preco: Preço total do produto.
+# total_custo: Custo total do produto.
+# lucro: Lucro por unidade vendida.
+
+```
+
+## 3. Análise univariada
+
+### 3.1 Visualização das distribuições
+```{r}
+
+ggplot(sku_dataset, aes(x = categoria, y = lucro)) +
+  geom_boxplot() +
+  labs(title = "Lucro Unitário por Categoria", x = "Categoria", y = "Lucro Unitário") +
+  theme_minimal()
+
+```
+
+### 3.2 Identificação de outliers
+```{r}
+
+  # A Categoria "Corpo" é uma outlier em relação às demais , dada a alta lucratividade unitária contra às demais categorias
+
+```
+
+## 4. Análise Bivariada
+
+### 4.2. Visualização de relações entre variáveis
+```{r}
+
+
+  numeric_data <- sku_dataset %>% select_if(is.numeric)
+
+ggplot(sku_dataset, aes(x = total_custo, y = lucro)) +
+  geom_point(color = "blue") +
+  labs(title = "Relação entre Total de Custo e Lucro Unitário",
+       x = "Total de Custo",
+       y = "Lucro Unitário") +
+  theme_minimal()
+
+```
+
+### 4.3. Análise de correlação
+```{r}
+
+  install.packages("corrplot")
+  library(corrplot)
+  # analisar quais são so produtos com maior lucro unitário por categoria
+
+  cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+  corrplot(correlacao, method = "color", type = "upper", 
+         tl.col = "black", tl.srt = 45,
+         addCoef.col = "black", # Adiciona os coeficientes de correlação
+         diag = FALSE) # Remove a diagonal
+```
+
+## 5. Análise Multivariada
+
+### 5.1. Análise de Componentes Principais (PCA)
+```{r}
+
+# Executar a PCA usando prcomp()
+pca_result <- prcomp(numeric_data, scale. = TRUE)
+
+# Visualizar o resumo dos resultados da PCA
+summary(pca_result)
+
+# Visualizar a importância dos componentes principais
+pca_result$sdev^2 / sum(pca_result$sdev^2)
+
+# Criar um biplot para visualizar os resultados da PCA
+biplot(pca_result, scale = 0)
+
+# Criar um gráfico de variância explicada (scree plot)
+scree_data <- data.frame(
+  Principal_Component = paste0("PC", 1:length(pca_result$sdev)),
+  Variance_Explained = pca_result$sdev^2 / sum(pca_result$sdev^2)
+)
+
+ggplot(scree_data, aes(x = Principal_Component, y = Variance_Explained)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Scree Plot", x = "Principal Component", y = "Proportion of Variance Explained") +
+  theme_minimal()
+
+```
+
+### 5.2. Interpretação dos componentes
+```{r}
+  # PCA
+  # Componentes são novas variáveis que representam combinações lineares das variáveis originais. O primeiro componente principal (PC1) é a direção que captura a maior variação nos dados, o segundo componente (PC2) captura a segunda maior variação, e assim por diante.
+
+
+  # Variância
+  # Cada componente principal explica uma certa proporção da variação total nos dados. A proporção de variância explicada indica a importância do componente na captura da informação dos dados originais.
+# 
+
+```
+
+## 6. Conclusão e discussão
+```{r}
+
+  # A principal descoberta da análise está na observação que em geral são dados modestamente descorrelacionados e a margem de lucro acaba não variando tanto entre os produtos, dado que - em geral - aqueles que são historicamente mais caros para produção/compra, são os mais caros para revenda. 
+
+```
+
+## 7. Discussão sobre limitações e possíveis melhorias
+```{r}
+
+  # O estudo tem algumas limitações e possíveis problemas nos dados, eu acabei somando os preços e custos dos produtos, o que pode não indicar uma vericidade de 100% dos dados, sendo necessário uma maior sequência de aprimoramento e tratamento dos dados.
+
+```
+
