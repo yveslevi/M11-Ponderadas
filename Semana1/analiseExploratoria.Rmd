@@ -17,6 +17,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ### 1.1 Carregamento dos dados
 
 ```{r}
+
+# install.packages("dplyr")
+# install.packages("ggplot2")
+# install.packages("corrplot")
 library(readxl)
 library(dplyr)
 library(openxlsx)
@@ -148,13 +152,13 @@ ggplot(sku_dataset, aes(x = total_custo, y = lucro)) +
 ### 4.3. Análise de correlação
 ```{r}
 
-  install.packages("corrplot")
+#  install.packages("corrplot")
   library(corrplot)
   # analisar quais são so produtos com maior lucro unitário por categoria
 
   cor_matrix <- cor(numeric_data, use = "complete.obs")
 
-  corrplot(correlacao, method = "color", type = "upper", 
+  corrplot(cor_matrix, method = "color", type = "upper", 
          tl.col = "black", tl.srt = 45,
          addCoef.col = "black", # Adiciona os coeficientes de correlação
          diag = FALSE) # Remove a diagonal
@@ -213,6 +217,6 @@ ggplot(scree_data, aes(x = Principal_Component, y = Variance_Explained)) +
 ```{r}
 
   # O estudo tem algumas limitações e possíveis problemas nos dados, eu acabei somando os preços e custos dos produtos, o que pode não indicar uma vericidade de 100% dos dados, sendo necessário uma maior sequência de aprimoramento e tratamento dos dados.
-
+# 
 ```
 
