@@ -1,0 +1,7 @@
+POST http://localhost:5000/data
+Content-Type: application/json
+
+{
+    "date": 1692345600,
+    "dados": 12345
+}
