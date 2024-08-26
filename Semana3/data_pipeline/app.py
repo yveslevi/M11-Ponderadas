@@ -6,7 +6,8 @@ from data_pipeline.data_processing import process_data, prepare_dataframe_for_in
 from pokedex_integration import get_pokemon_data, generate_json_from_pokemon, post_data_to_api
 import pandas as pd
 from minio import Minio 
-from minio.error import S3Error
+from minio.error import S3Error, InvalidResponseError
+import logging
 
 app = Flask(__name__)
 
@@ -20,26 +21,36 @@ execute_sql_script('sql/create_table.sql')
 def receive_data():
     data = request.get_json()
     if not data or 'date' not in data or 'dados' not in data:
+        logging.error("Formato de dados inválido: %s", data)
         return jsonify({"error": "Formato de dados inválido"}), 400
 
     try:
         datetime.fromtimestamp(data['date'])
         int(data['dados'])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
+        logging.error("Erro na validação dos dados: %s", e)
         return jsonify({"error": "Tipo de dados inválido"}), 400
 
-    # Processar e salvar dados
-    filename = process_data(data)
-    upload_file("raw-data", filename)
+    try:
+        # Processar e salvar dados
+        filename = process_data(data)
+        upload_file("raw-data", filename)
+    except (S3Error, InvalidResponseError) as e:
+        logging.error("Erro ao salvar no MinIO: %s", e)
+        return jsonify({"error": "Erro ao salvar dados"}), 500
 
-    # Ler arquivo Parquet do MinIO
-    download_file("raw-data", filename, f"downloaded_{filename}")
-    df_parquet = pd.read_parquet(f"downloaded_{filename}")
+    try:
+        # Ler arquivo Parquet do MinIO
+        download_file("raw-data", filename, f"downloaded_{filename}")
+        df_parquet = pd.read_parquet(f"downloaded_{filename}")
 
-    # Preparar e inserir dados no ClickHouse
-    df_prepared = prepare_dataframe_for_insert(df_parquet)
-    client = get_client()  # Obter o cliente ClickHouse
-    insert_dataframe(client, 'working_data', df_prepared)
+        # Preparar e inserir dados no ClickHouse
+        df_prepared = prepare_dataframe_for_insert(df_parquet)
+        client = get_client()  # Obter o cliente ClickHouse
+        insert_dataframe(client, 'working_data', df_prepared)
+    except Exception as e:
+        logging.error("Erro ao processar dados: %s", e)
+        return jsonify({"error": "Erro ao processar dados"}), 500
 
     return jsonify({"message": "Dados recebidos, armazenados e processados com sucesso"}), 200
 
